@@ -5,6 +5,8 @@
 
 ## Simqle
 
+[![Greenkeeper badge](https://badges.greenkeeper.io/mabels/simqle.svg)](https://greenkeeper.io/)
+
 Simple Queue in memory Queue, with 
 
   - taskTimer
