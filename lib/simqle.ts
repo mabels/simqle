@@ -1,5 +1,4 @@
-import * as Rx from 'rxjs';
-import * as winston from 'winston';
+import * as Rx from 'urxjs/dist/lib/abstract-rx';
 
 export const State = {
   OK: 'OK',
@@ -12,9 +11,9 @@ export class QEntry<T> {
   public retryAt: Date;
   public completed: Date;
   public executeCnt: number;
-  public task: Rx.Observable<QEntry<T>>;
+  public task: Rx.Subject<T>;
 
-  constructor(task: Rx.Observable<QEntry<T>>) {
+  constructor(task: Rx.Subject<T>) {
     this.executeCnt = 0;
     this.task = task;
     this.created = new Date();
@@ -28,6 +27,27 @@ export interface QConfig {
   maxExecuteCnt?: number;
 }
 
+export interface LogMsg {
+  level: string;
+  parts: any[];
+}
+
+class Logger {
+  private upStream: Rx.Subject<LogMsg>;
+  constructor(upStream: Rx.Subject<LogMsg>) {
+    this.upStream = upStream;
+  }
+  public info(...args: any[]): void {
+    this.upStream.next({ level: 'info', parts: args});
+  }
+  public error(...args: any[]): void {
+    this.upStream.next({ level: 'error', parts: args});
+  }
+  public debug(...args: any[]): void {
+    this.upStream.next({ level: 'debug', parts: args});
+  }
+}
+
 export class Queue<T> {
   public q: Rx.Subject<QEntry<T>>;
   public deadLetter: Rx.Subject<QEntry<T>>;
@@ -39,23 +59,19 @@ export class Queue<T> {
   public taskTimer: number;
   public retryWaitTime: number;
   public maxExecuteCnt: number;
-  public logger: winston.LoggerInstance;
+  private logger: Logger;
 
-  constructor(logger: winston.LoggerInstance, argv: QConfig) {
+  constructor(logger: Rx.Subject<LogMsg>, argv: QConfig) {
     this.inProcess = false;
     this.taskTimer = argv.taskTimer || 500;
     this.reclaimTimeout = argv.reclaimTimeout || 10000;
     this.retryWaitTime = argv.retryWaitTime || 1000;
     this.maxExecuteCnt = argv.maxExecuteCnt || 10;
-    this.logger = logger;
+    this.logger = new Logger(logger);
     this.q = new Rx.Subject<QEntry<T>>();
     this.deadLetter = new Rx.Subject<QEntry<T>>();
     this.q.subscribe(this.action.bind(this));
     this.qTask = setInterval(this.processMemoryQ.bind(this), this.taskTimer);
-    //   next: (e) => {
-    //     console.log('observerA: ' + e);
-    //   }
-    // });
   }
 
   public stop(): Rx.Observable<void> {
@@ -70,7 +86,7 @@ export class Queue<T> {
           observer.next(null);
           observer.complete();
         } else {
-          this.logger.debug('waiting for Q Task to stop');
+          this.logger.info('waiting for Q Task to stop', this.qEntries.length);
           setTimeout(action, this.taskTimer);
         }
       };
@@ -82,7 +98,7 @@ export class Queue<T> {
     this.logger.debug('action:', qe);
     qe.running = new Date();
     ++qe.executeCnt;
-    qe.task.subscribe((_qe: QEntry<T>) => {
+    qe.task.subscribe((_qe: T) => {
       qe.running = null;
       qe.completed = new Date();
       this.logger.debug('action:completed:', qe);
@@ -130,14 +146,14 @@ export class Queue<T> {
     this.inProcess = false;
   }
 
-  public push(action: Rx.Observable<QEntry<T>>): void {
+  public push(action: Rx.Subject<T>): void {
     this.qEntries.push(new QEntry(action));
     this.processMemoryQ();
   }
 
 }
 
-export function start<T>(logger: winston.LoggerInstance, argv: any): Queue<T> {
+export function start<T>(logger: Rx.Subject<LogMsg>, argv: any): Queue<T> {
   return new Queue<T>(logger, argv);
 }
 
