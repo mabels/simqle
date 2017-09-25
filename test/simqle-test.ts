@@ -1,10 +1,7 @@
 import { assert } from 'chai';
 import * as queue from '../lib/simqle';
-import * as rxjs from 'rxjs';
-import * as Rx from 'urxjs/dist/lib/abstract-rx';
+import * as Rx from 'rxjs';
 import * as Winston from 'winston';
-
-Rx.inject(rxjs);
 
 const logger = new Rx.Subject<queue.LogMsg>();
 const winstonLogger = new Winston.Logger({
@@ -20,36 +17,37 @@ logger.subscribe((l: queue.LogMsg) => {
 
 describe('queue', () => {
 
-  it.only('simple', (done) => {
+  it('simple', (done) => {
     // simple
     const q = queue.start<number>(logger, {});
     let calls = 10;
     let pulls = 10;
     let pidx = 0;
     q.q.subscribe(data => {
-      console.log('task: idx:pulls', pulls);
+      // console.log('task: idx:pulls', pulls);
       --pulls;
       data.task.subscribe(idx => {
-        console.log('task: idx', idx, pidx++);
-        assert.equal(idx, pidx++);
+        // console.log('task: idx', idx, pidx);
+        assert.equal(idx, pidx++, '-1-');
       }, err => {
-        console.log('task: idx: error', err);
+        // console.log('task: idx: error', err);
       }, () => {
-        console.log('task: idx: complete');
+        // console.log('task: idx: complete');
       });
     });
     (Array(calls).fill(0)).forEach((_: any, idx: number) => {
       // console.log('simple:', idx);
+      const id = Math.random();
+      --calls;
       q.push(Rx.Observable.create((obs: Rx.Observer<number>) => {
-        console.log('task: vals', calls, idx);
-        --calls;
+        // console.log('task: vals', id, calls, idx);
         obs.next(idx);
         obs.complete();
       }));
     });
     setTimeout(() => {
-      assert.equal(0, calls);
-      assert.equal(0, pulls);
+      assert.equal(0, pulls, 'pulls');
+      assert.equal(0, calls, 'calls');
       q.stop().subscribe(() => {
         done();
       });

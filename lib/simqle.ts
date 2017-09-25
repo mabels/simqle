@@ -1,4 +1,4 @@
-import * as Rx from 'urxjs/dist/lib/abstract-rx';
+import * as Rx from 'rxjs';
 
 export const State = {
   OK: 'OK',
@@ -76,7 +76,7 @@ export class Queue<T> {
 
   public stop(): Rx.Observable<void> {
     this.logger.info('run stop');
-    console.log('run stop');
+    // console.log('run stop');
     return Rx.Observable.create((observer: Rx.Observer<void>) => {
       this.logger.info('queue stop');
       const action = () => {
