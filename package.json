@@ -1,6 +1,6 @@
 {
   "name": "simqle",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "simqle queue",
   "main": "./dist/lib/simqle.js",
   "types": "./dist/lib/simqle.d.ts",
@@ -24,18 +24,19 @@
   "homepage": "https://github.com/mabels/simqle#readme",
   "devDependencies": {
     "@types/chai": ">=3.4.33",
+    "@types/es6-shim": "^0.31.35",
     "@types/mocha": ">=2.2.33",
     "chai": ">=3.5.0",
+    "cz-conventional-changelog": ">=1.1.6",
+    "es6-shim": "^0.35.3",
     "mocha": ">=3.2.0",
     "rimraf": ">=2.5.2",
     "tslint": ">=3.11.0",
-    "typescript": ">=2.1.1",
-    "cz-conventional-changelog": ">=1.1.6"
+    "typescript": ">=2.1.1"
   },
   "dependencies": {
     "@types/winston": ">=0.0.32",
     "rxjs": "^5.4.3",
-    "urxjs": "^1.0.0",
     "winston": ">=2.2.0"
   },
   "publishConfig": {
