@@ -37,7 +37,7 @@ describe('queue', () => {
     });
     (Array(calls).fill(0)).forEach((_: any, idx: number) => {
       // console.log('simple:', idx);
-      const id = Math.random();
+      // const id = Math.random();
       --calls;
       q.push(Rx.Observable.create((obs: Rx.Observer<number>) => {
         // console.log('task: vals', id, calls, idx);
