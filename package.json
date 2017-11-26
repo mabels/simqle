@@ -1,6 +1,6 @@
 {
   "name": "simqle",
-  "version": "1.1.1",
+  "version": "2.0.0",
   "description": "simqle queue",
   "main": "./dist/lib/simqle.js",
   "types": "./dist/lib/simqle.d.ts",
