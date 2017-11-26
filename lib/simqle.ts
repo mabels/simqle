@@ -7,8 +7,8 @@ export const State = {
 
 export class QEntryRun {
   public started: Date;
-  private _completed: Date;
-  private _error: any;
+  public _completed: Date;
+  public _error: any;
 
   constructor() {
     this.started = new Date();
