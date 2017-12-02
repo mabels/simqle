@@ -3,8 +3,9 @@ import * as queue from '../lib/simqle';
 import * as Rx from 'rxjs';
 import * as Winston from 'winston';
 // import { Promise } from 'es6-shim';
+// import { Promise } from 'es6-shim';
 
-const logger = new Rx.Subject<queue.LogMsg>();
+// const logger = new Rx.Subject<queue.LogMsg>();
 const winstonLogger = new Winston.Logger({
   level: 'info',
   transports: [
@@ -12,10 +13,10 @@ const winstonLogger = new Winston.Logger({
   ]
 });
 
-logger.subscribe((l: queue.LogMsg) => {
+function logger(l: queue.LogMsg): void {
   const awin = winstonLogger as any;
   awin[l.level].apply(awin[l.level], l.parts);
-});
+}
 
 function counter(oneState: any): Rx.Observer<number> {
   return {
@@ -64,10 +65,10 @@ function qLoop(q: queue.Queue<number>, loops: number, countDownLedge: Rx.Subject
           assert.equal(oneState.next, ((loops * (loops + 1)) / 2));
           assert.equal(oneState.error, 0);
           assert.equal(oneState.complete, loops);
-          rs();
+          q.stop().subscribe(() => { rs(); });
         }
       } catch (e) {
-        rj(e);
+        q.stop().subscribe(() => { rj(e); });
       }
     });
 
@@ -87,43 +88,48 @@ function qLoop(q: queue.Queue<number>, loops: number, countDownLedge: Rx.Subject
 
 describe('queue', () => {
 
-  it('simple no worker', async () => {
+  it('simple no worker', async (): Promise<void> => {
     // simple
-    const q = queue.start<number>(logger, { taskTimer: 50 });
-    // q.addWorker(() => { setTimeout(); });
-    // q.addWorker(() => { setTimeout(); });
-    const oneState = { next: 0, error: 0, complete: 0 };
-    const one = counter(oneState);
-    const c1000 = new Rx.Subject<number>();
-    c1000.subscribe(one);
-    q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
-      obs.next(1000);
-      obs.complete();
-    }), c1000);
-    const c2000 = new Rx.Subject<number>();
-    c2000.subscribe(one);
-    q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
-      obs.next(2000);
-      obs.complete();
-    }), c2000);
-    const c3000 = new Rx.Subject<number>();
-    c3000.subscribe(one);
-    q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
-      obs.next(3000);
-      obs.complete();
-    }), c3000);
-
-    return new Promise((rs, rj) => {
-      q.length().subscribe((a: number) => {
-        try {
-          assert.equal(a, 3);
-          assert.equal(oneState.next, 0);
-          assert.equal(oneState.error, 0);
-          assert.equal(oneState.complete, 0);
-          rs();
-        } catch (e) {
-          rj(e);
+    return new Promise<void>((rs, rj) => {
+      queue.start<number>({ taskTimer: 50 }).subscribe(rsq => {
+        if (rsq instanceof queue.LogMsg) {
+          logger(rsq);
+          return;
         }
+        const q = rsq;
+        const oneState = { next: 0, error: 0, complete: 0 };
+        q.length().subscribe((a: number) => {
+          try {
+            if (a == 3) {
+              assert.equal(a, 3);
+              assert.equal(oneState.next, 0);
+              assert.equal(oneState.error, 0);
+              assert.equal(oneState.complete, 0);
+              q.stop().subscribe(() => { rs(); });
+            }
+          } catch (e) {
+            q.stop().subscribe(() => { rj(e); });
+          }
+        });
+        const one = counter(oneState);
+        const c1000 = new Rx.Subject<number>();
+        c1000.subscribe(one);
+        q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
+          obs.next(1000);
+          obs.complete();
+        }), c1000);
+        const c2000 = new Rx.Subject<number>();
+        c2000.subscribe(one);
+        q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
+          obs.next(2000);
+          obs.complete();
+        }), c2000);
+        const c3000 = new Rx.Subject<number>();
+        c3000.subscribe(one);
+        q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
+          obs.next(3000);
+          obs.complete();
+        }), c3000);
       });
     });
   });
@@ -131,123 +137,152 @@ describe('queue', () => {
   it('simple one worker', async () => {
     // simple
     return new Promise((rs, rj) => {
-      const q = queue.start<number>(logger, { taskTimer: 50 });
-      let countDown = 0;
-      const countDownLedge = new Rx.Subject<number>();
-      q.addWorker(worker(0, 2, () => countDownLedge.next(++countDown)));
-
-      const oneState = { next: 0, error: 0, complete: 0 };
-      const one = counter(oneState);
-      countDownLedge.subscribe((a) => {
-        try {
-          // console.log('Wait:', a);
-          if (a == 3) {
-            assert.equal(oneState.next, 6006);
-            assert.equal(oneState.error, 0);
-            assert.equal(oneState.complete, 3);
-            rs();
-          }
-        } catch (e) {
-          rj(e);
+      queue.start<number>({ taskTimer: 50 }).subscribe(rsq => {
+        if (rsq instanceof queue.LogMsg) {
+          logger(rsq);
+          return;
         }
+        const q = rsq;
+        // console.log(q);
+        let countDown = 0;
+        const countDownLedge = new Rx.Subject<number>();
+        q.addWorker(worker(0, 2, () => countDownLedge.next(++countDown)));
+
+        const oneState = { next: 0, error: 0, complete: 0 };
+        const one = counter(oneState);
+        countDownLedge.subscribe((a) => {
+          try {
+            // console.log('Wait:', a);
+            if (a == 3) {
+              assert.equal(oneState.next, 6006);
+              assert.equal(oneState.error, 0);
+              assert.equal(oneState.complete, 3);
+              q.stop().subscribe(() => { rs(); });
+            }
+          } catch (e) {
+            q.stop().subscribe(() => { rj(e); });
+          }
+        });
+
+        const c1000 = new Rx.Subject<number>();
+        c1000.subscribe(one);
+        q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
+          // console.log('QEntry:1000');
+          obs.next(1000);
+          obs.complete();
+        }), c1000);
+        const c2000 = new Rx.Subject<number>();
+        c2000.subscribe(one);
+        q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
+          // console.log('QEntry:2000');
+          obs.next(2000);
+          obs.complete();
+        }), c2000);
+        const c3000 = new Rx.Subject<number>();
+        c3000.subscribe(one);
+        q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
+          // console.log('QEntry:3000');
+          obs.next(3000);
+          obs.complete();
+        }), c3000);
+
       });
-
-      const c1000 = new Rx.Subject<number>();
-      c1000.subscribe(one);
-      q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
-        // console.log('QEntry:1000');
-        obs.next(1000);
-        obs.complete();
-      }), c1000);
-      const c2000 = new Rx.Subject<number>();
-      c2000.subscribe(one);
-      q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
-        // console.log('QEntry:2000');
-        obs.next(2000);
-        obs.complete();
-      }), c2000);
-      const c3000 = new Rx.Subject<number>();
-      c3000.subscribe(one);
-      q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
-        // console.log('QEntry:3000');
-        obs.next(3000);
-        obs.complete();
-      }), c3000);
-
     });
   });
 
   it('1000 one worker', async function (): Promise<void> {
     // this.timeout(10000);
     // simple
-    const q = queue.start<number>(logger, { taskTimer: 50 });
-    let countDown = 0;
-    const countDownLedge = new Rx.Subject<number>();
-    q.addWorker(worker(0, 0, () => countDownLedge.next(++countDown)));
-    return qLoop(q, 1000, countDownLedge);
+    return new Promise<void>((rs, rj) => {
+      queue.start<number>({ taskTimer: 50 }).subscribe(rsq => {
+        if (rsq instanceof queue.LogMsg) {
+          logger(rsq);
+          return;
+        }
+        const q = rsq;
+        let countDown = 0;
+        const countDownLedge = new Rx.Subject<number>();
+        q.addWorker(worker(0, 0, () => countDownLedge.next(++countDown)));
+        qLoop(q, 1000, countDownLedge).then(rs).catch(rj);
+      });
+    });
   });
 
   it('simple two worker', async () => {
     return new Promise((rs, rj) => {
       const workers = [0, 0];
-      const q = queue.start<number>(logger, { taskTimer: 50 });
-      let countDown = 0;
-      const countDownLedge = new Rx.Subject<number>();
-      q.addWorker(worker(10, 2, () => { workers[0]++; countDownLedge.next(++countDown); }));
-      q.addWorker(worker(15, 2, () => { workers[1]++; countDownLedge.next(++countDown); }));
-      const oneState = { next: 0, error: 0, complete: 0 };
-      const one = counter(oneState);
-      countDownLedge.subscribe((a) => {
-        try {
-          // console.log('Wait:', a);
-          if (a == 3) {
-            assert.equal(workers[0], 2, `fast worker count ${workers}`);
-            assert.equal(workers[1], 1, 'slow worker count');
-            assert.equal(oneState.next, 6006);
-            assert.equal(oneState.error, 0);
-            assert.equal(oneState.complete, 3);
-            rs();
-          }
-        } catch (e) {
-          rj(e);
+      queue.start<number>({ taskTimer: 50 }).subscribe(rsq => {
+        if (rsq instanceof queue.LogMsg) {
+          logger(rsq);
+          return;
         }
+        const q = rsq;
+        let countDown = 0;
+        const countDownLedge = new Rx.Subject<number>();
+        q.addWorker(worker(10, 2, () => { workers[0]++; countDownLedge.next(++countDown); }));
+        q.addWorker(worker(15, 2, () => { workers[1]++; countDownLedge.next(++countDown); }));
+        const oneState = { next: 0, error: 0, complete: 0 };
+        const one = counter(oneState);
+        countDownLedge.subscribe((a) => {
+          try {
+            // console.log('Wait:', a);
+            if (a == 3) {
+              assert.equal(workers[0], 2, `fast worker count ${workers}`);
+              assert.equal(workers[1], 1, 'slow worker count');
+              assert.equal(oneState.next, 6006);
+              assert.equal(oneState.error, 0);
+              assert.equal(oneState.complete, 3);
+              q.stop().subscribe(() => { rs(); });
+            }
+          } catch (e) {
+            q.stop().subscribe(() => { rj(); });
+          }
+        });
+
+        const c1000 = new Rx.Subject<number>();
+        c1000.subscribe(one);
+        q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
+          // console.log('QEntry:1000');
+          obs.next(1000);
+          obs.complete();
+        }), c1000);
+        const c2000 = new Rx.Subject<number>();
+        c2000.subscribe(one);
+        q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
+          // console.log('QEntry:2000');
+          obs.next(2000);
+          obs.complete();
+        }), c2000);
+        const c3000 = new Rx.Subject<number>();
+        c3000.subscribe(one);
+        q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
+          // console.log('QEntry:3000');
+          obs.next(3000);
+          obs.complete();
+        }), c3000);
+
       });
-
-      const c1000 = new Rx.Subject<number>();
-      c1000.subscribe(one);
-      q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
-        // console.log('QEntry:1000');
-        obs.next(1000);
-        obs.complete();
-      }), c1000);
-      const c2000 = new Rx.Subject<number>();
-      c2000.subscribe(one);
-      q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
-        // console.log('QEntry:2000');
-        obs.next(2000);
-        obs.complete();
-      }), c2000);
-      const c3000 = new Rx.Subject<number>();
-      c3000.subscribe(one);
-      q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
-        // console.log('QEntry:3000');
-        obs.next(3000);
-        obs.complete();
-      }), c3000);
-
     });
   });
 
   it('1000 three worker', async function (): Promise<void> {
     // this.timeout(10000);
     // simple
-    const q = queue.start<number>(logger, { taskTimer: 50 });
-    let countDown = 0;
-    const countDownLedge = new Rx.Subject<number>();
-    q.addWorker(worker(0, 0, () => countDownLedge.next(++countDown)));
-    q.addWorker(worker(0, 0, () => countDownLedge.next(++countDown)));
-    q.addWorker(worker(0, 0, () => countDownLedge.next(++countDown)));
-    return qLoop(q, 1000, countDownLedge);
+    return new Promise<void>((rs, rj) => {
+      queue.start<number>({ taskTimer: 50 }).subscribe(rsq => {
+        if (rsq instanceof queue.LogMsg) {
+          logger(rsq);
+          return;
+        }
+        const q = rsq;
+        let countDown = 0;
+        const countDownLedge = new Rx.Subject<number>();
+        q.addWorker(worker(0, 0, () => countDownLedge.next(++countDown)));
+        q.addWorker(worker(0, 0, () => countDownLedge.next(++countDown)));
+        q.addWorker(worker(0, 0, () => countDownLedge.next(++countDown)));
+        qLoop(q, 1000, countDownLedge).then(rs).catch(rj);
+      });
+    });
   });
 
   /*
@@ -279,9 +314,7 @@ describe('queue', () => {
     setTimeout(() => {
       assert.equal(0, pulls, 'pulls');
       assert.equal(0, calls, 'calls');
-      q.stop().subscribe(() => {
-        done();
-      });
+      q.stop().subscribe(() => { done(); });
     }, 800);
   });
 

@@ -1,6 +1,6 @@
 {
   "name": "simqle",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "simqle queue",
   "main": "./dist/lib/simqle.js",
   "types": "./dist/lib/simqle.d.ts",
@@ -23,21 +23,21 @@
   },
   "homepage": "https://github.com/mabels/simqle#readme",
   "devDependencies": {
-    "@types/chai": ">=3.4.33",
-    "@types/es6-shim": "^0.31.35",
-    "@types/mocha": ">=2.2.33",
+    "@types/chai": "^4.0.6",
+    "@types/mocha": "^2.2.44",
+    "@types/winston": "^2.3.7",
     "chai": ">=3.5.0",
-    "cz-conventional-changelog": ">=1.1.6",
-    "es6-shim": "^0.35.3",
-    "mocha": ">=3.2.0",
-    "rimraf": ">=2.5.2",
-    "tslint": ">=3.11.0",
-    "typescript": ">=2.1.1"
+    "cz-conventional-changelog": "^2.1.0",
+    "mocha": "^4.0.1",
+    "rimraf": "^2.6.2",
+    "tslint": "^5.8.0",
+    "typescript": "^2.6.2",
+    "winston": "^2.4.0"
   },
   "dependencies": {
-    "@types/winston": ">=0.0.32",
-    "rxjs": "^5.4.3",
-    "winston": ">=2.2.0"
+    "@types/es6-shim": "^0.31.35",
+    "es6-shim": "^0.35.3",
+    "rxjs": "^5.5.3"
   },
   "publishConfig": {
     "tag": "next"
