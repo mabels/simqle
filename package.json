@@ -1,6 +1,6 @@
 {
   "name": "simqle",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "simqle queue",
   "main": "./dist/lib/simqle.js",
   "types": "./dist/lib/simqle.d.ts",
@@ -26,6 +26,8 @@
     "@types/chai": "^4.0.6",
     "@types/mocha": "^2.2.44",
     "@types/winston": "^2.3.7",
+    "@types/es6-shim": "^0.31.35",
+    "es6-shim": "^0.35.3",
     "chai": ">=3.5.0",
     "cz-conventional-changelog": "^2.1.0",
     "mocha": "^4.0.1",
@@ -35,12 +37,7 @@
     "winston": "^2.4.0"
   },
   "dependencies": {
-    "@types/es6-shim": "^0.31.35",
-    "es6-shim": "^0.35.3",
     "rxjs": "^5.5.3"
-  },
-  "publishConfig": {
-    "tag": "next"
   },
   "config": {
     "commitizen": {
