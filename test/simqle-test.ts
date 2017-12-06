@@ -2,8 +2,7 @@ import { assert } from 'chai';
 // import * as queue from '../lib/simqle';
 import * as RxMe from 'rxme';
 import * as simqle from '../lib/simqle';
-import { Observer } from 'rxjs/Observer';
-import { Subject } from 'rxme';
+// import { Subject } from 'rxme';
 // import * as rx from 'rxjs';
 // import * as Winston from 'winston';
 // import { Promise } from 'es6-shim';
@@ -43,11 +42,11 @@ function worker(ms: number, ofs: number, cb: () => void): simqle.QWorker<number>
   return (input: RxMe.Observable<number>, output: RxMe.Subject<number>) => {
     // console.log('Worker:Started');
     const nrs: number[] = [];
-    input.match((done: Subject<number>, nr: number) => {
+    input.match((done: RxMe.Subject<number>, nr: number) => {
       // console.log('worker:match', nr);
       nrs.push(nr);
       return true;
-    }).matchComplete((res: Subject<any>, done: RxMe.Done) => {
+    }).matchComplete((res: RxMe.Subject<any>, done: RxMe.Done) => {
       // console.log('worker:done');
       setTimeout(() => {
         // console.log('worker:done:Timeout:', ofs, nrs);
