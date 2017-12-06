@@ -1,28 +1,32 @@
 import { assert } from 'chai';
-import * as queue from '../lib/simqle';
-import * as Rx from 'rxjs';
-import * as Winston from 'winston';
+// import * as queue from '../lib/simqle';
+import * as RxMe from 'rxme';
+import * as simqle from '../lib/simqle';
+import { Observer } from 'rxjs/Observer';
+import { Subject } from 'rxme';
+// import * as rx from 'rxjs';
+// import * as Winston from 'winston';
 // import { Promise } from 'es6-shim';
 // import { Promise } from 'es6-shim';
 
 // const logger = new Rx.Subject<queue.LogMsg>();
-const winstonLogger = new Winston.Logger({
-  level: 'info',
-  transports: [
-    new (Winston.transports.Console)()
-  ]
-});
+// const winstonLogger = new Winston.Logger({
+//   level: 'info',
+//   transports: [
+//     new (Winston.transports.Console)()
+//   ]
+// });
 
-function logger(l: queue.LogMsg): void {
-  const awin = winstonLogger as any;
+function logger(l: RxMe.LogMsg): void {
+  const awin = console as any;
   awin[l.level].apply(awin[l.level], l.parts);
 }
 
-function counter(oneState: any): Rx.Observer<number> {
+function counter(oneState: any): RxMe.Observer<number> {
   return {
-    next: (a: number) => {
+    next: (a: RxMe.RxMe<number>) => {
       // console.log('one.Next:', a, oneState.next);
-      oneState.next += a;
+      oneState.next += a.asKind<number>();
     },
     error: (err: any) => {
       oneState.error++;
@@ -35,51 +39,68 @@ function counter(oneState: any): Rx.Observer<number> {
   };
 }
 
-function worker(ms: number, ofs: number, cb: () => void): queue.QWorker<number> {
-  return (input: Rx.Observable<number>, output: Rx.Subject<number>) => {
+function worker(ms: number, ofs: number, cb: () => void): simqle.QWorker<number> {
+  return (input: RxMe.Observable<number>, output: RxMe.Subject<number>) => {
     // console.log('Worker:Started');
     const nrs: number[] = [];
-    input.subscribe((nr: number) => {
-      // console.log('worker:', nr);
+    input.match((done: Subject<number>, nr: number) => {
+      // console.log('worker:match', nr);
       nrs.push(nr);
-    }, (err: any) => {
-      output.error(err);
-    }, () => {
+      return true;
+    }).matchComplete((res: Subject<any>, done: RxMe.Done) => {
+      // console.log('worker:done');
       setTimeout(() => {
-        nrs.forEach(nr => output.next(nr + ofs));
+        // console.log('worker:done:Timeout:', ofs, nrs);
+        nrs.forEach(nr => output.next(RxMe.data(nr + ofs)));
         output.complete();
+        res.done(true);
         cb();
       }, ms);
-    });
+      // output.next(RxMe.data(done));
+      // output.data(done);
+      // cb();
+      return res;
+    }).passTo(output);
+    /*
+      -    }, (err: any) => {
+      -      output.error(err);
+      -    }, () => {
+      -      setTimeout(() => {
+      -        nrs.forEach(nr => output.next(nr + ofs));
+      -        output.complete();
+      -        cb();
+      -      }, ms);
+    */
+
   };
 }
 
-function qLoop(q: queue.Queue<number>, loops: number, countDownLedge: Rx.Subject<number>): Promise<void> {
+function qLoop(q: simqle.Queue<number>, loops: number, countDownLedge: RxMe.Subject<number>): Promise<void> {
   return new Promise<void>((rs, rj) => {
     const oneState = { next: 0, error: 0, complete: 0 };
     const one = counter(oneState);
 
     countDownLedge.subscribe((a) => {
       try {
-        if (a == loops) {
+        if (a.asKind<number>() == loops) {
           assert.equal(oneState.next, ((loops * (loops + 1)) / 2));
           assert.equal(oneState.error, 0);
           assert.equal(oneState.complete, loops);
-          q.stop().subscribe(() => { rs(); });
+          q.stop().matchDone(() => { rs(); return false; }).passTo();
         }
       } catch (e) {
-        q.stop().subscribe(() => { rj(e); });
+        q.stop().matchDone(() => { rj(e); return false; }).passTo();
       }
     });
 
     for (let i = 1; i <= loops; ++i) {
       // console.log('simqle:', i);
-      const c1000 = new Rx.Subject<number>();
+      const c1000 = new RxMe.Subject<number>(RxMe.Match.NUMBER);
       c1000.subscribe(one);
       // console.log(`QEntry:Off:${i}`);
-      q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
+      q.push<number>(RxMe.Observable.create(RxMe.Match.NUMBER, (obs: RxMe.Observer<number>) => {
         // console.log(`QEntry:${j}`);
-        obs.next(i);
+        obs.next(RxMe.data(i));
         obs.complete();
       }), c1000);
     }
@@ -91,102 +112,105 @@ describe('queue', () => {
   it('simple no worker', async (): Promise<void> => {
     // simple
     return new Promise<void>((rs, rj) => {
-      queue.start<number>({ taskTimer: 50 }).subscribe(rsq => {
-        if (rsq instanceof queue.LogMsg) {
-          logger(rsq);
-          return;
-        }
-        const q = rsq;
-        const oneState = { next: 0, error: 0, complete: 0 };
-        q.length().subscribe((a: number) => {
-          try {
-            if (a == 3) {
-              assert.equal(a, 3);
-              assert.equal(oneState.next, 0);
-              assert.equal(oneState.error, 0);
-              assert.equal(oneState.complete, 0);
-              q.stop().subscribe(() => { rs(); });
+      // console.log('--1');
+      simqle.start<number>({ taskTimer: 50 })
+        .matchLogMsg((_: simqle.Subject<any>, log: RxMe.LogMsg) => {
+          // console.log('LogMsg:', log);
+          logger(log);
+          return false;
+        }).match((_: simqle.Subject<any>, q: simqle.Queue<number>) => {
+          // console.log('Match:', q);
+          const oneState = { next: 0, error: 0, complete: 0 };
+          q.length().subscribe((a: number) => {
+            // console.log('>>>>', a);
+            try {
+              if (a >= 3) {
+                assert.equal(a, 3);
+                assert.equal(oneState.next, 0);
+                assert.equal(oneState.error, 0);
+                assert.equal(oneState.complete, 0);
+                q.stop().matchDone(() => { rs(); return false; }).passTo();
+              }
+            } catch (e) {
+              q.stop().matchDone(() => { rj(e); return false; }).passTo();
             }
-          } catch (e) {
-            q.stop().subscribe(() => { rj(e); });
-          }
-        });
-        const one = counter(oneState);
-        const c1000 = new Rx.Subject<number>();
-        c1000.subscribe(one);
-        q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
-          obs.next(1000);
-          obs.complete();
-        }), c1000);
-        const c2000 = new Rx.Subject<number>();
-        c2000.subscribe(one);
-        q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
-          obs.next(2000);
-          obs.complete();
-        }), c2000);
-        const c3000 = new Rx.Subject<number>();
-        c3000.subscribe(one);
-        q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
-          obs.next(3000);
-          obs.complete();
-        }), c3000);
-      });
+          });
+          const one = counter(oneState);
+          const c1000 = new RxMe.Subject<number>(RxMe.Match.NUMBER);
+          c1000.subscribe(one);
+          q.push<number>(RxMe.Observable.create(RxMe.Match.NUMBER, (obs: RxMe.Observer<number>) => {
+            obs.next(RxMe.data(1000));
+            obs.complete();
+          }), c1000);
+          const c2000 = new RxMe.Subject<number>(RxMe.Match.NUMBER);
+          c2000.subscribe(one);
+          q.push<number>(RxMe.Observable.create(RxMe.Match.NUMBER, (obs: RxMe.Observer<number>) => {
+            obs.next(RxMe.data(2000));
+            obs.complete();
+          }), c2000);
+          const c3000 = new RxMe.Subject<number>(RxMe.Match.NUMBER);
+          c3000.subscribe(one);
+          q.push<number>(RxMe.Observable.create(RxMe.Match.NUMBER, (obs: RxMe.Observer<number>) => {
+            obs.next(RxMe.data(3000));
+            obs.complete();
+          }), c3000);
+          return false;
+        }).passTo();
     });
   });
 
   it('simple one worker', async () => {
     // simple
     return new Promise((rs, rj) => {
-      queue.start<number>({ taskTimer: 50 }).subscribe(rsq => {
-        if (rsq instanceof queue.LogMsg) {
-          logger(rsq);
-          return;
-        }
-        const q = rsq;
-        // console.log(q);
-        let countDown = 0;
-        const countDownLedge = new Rx.Subject<number>();
-        q.addWorker(worker(0, 2, () => countDownLedge.next(++countDown)));
+      simqle.start<number>({ taskTimer: 50 })
+        .matchLogMsg((_: any, rlm: RxMe.LogMsg) => {
+          logger(rlm);
+          return true;
+        }).match((done: simqle.Subject<any>, q: simqle.Queue<number>) => {
+          // console.log(q);
+          let countDown = 0;
+          const countDownLedge = new RxMe.Subject<number>(RxMe.Match.NUMBER);
+          q.addWorker(worker(0, 2, () => countDownLedge.next(RxMe.data(++countDown))));
 
-        const oneState = { next: 0, error: 0, complete: 0 };
-        const one = counter(oneState);
-        countDownLedge.subscribe((a) => {
-          try {
-            // console.log('Wait:', a);
-            if (a == 3) {
-              assert.equal(oneState.next, 6006);
-              assert.equal(oneState.error, 0);
-              assert.equal(oneState.complete, 3);
-              q.stop().subscribe(() => { rs(); });
+          const oneState = { next: 0, error: 0, complete: 0 };
+          const one = counter(oneState);
+          countDownLedge.subscribe((a) => {
+            try {
+              // console.log('Wait:', a);
+              if (a.asKind<number>() == 3) {
+                assert.equal(oneState.next, 6006);
+                assert.equal(oneState.error, 0);
+                assert.equal(oneState.complete, 3);
+                q.stop().matchDone(() => { rs(); return false; }).passTo();
+              }
+            } catch (e) {
+              q.stop().matchDone(() => { rj(e); return false; }).passTo();
             }
-          } catch (e) {
-            q.stop().subscribe(() => { rj(e); });
-          }
-        });
+          });
 
-        const c1000 = new Rx.Subject<number>();
-        c1000.subscribe(one);
-        q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
-          // console.log('QEntry:1000');
-          obs.next(1000);
-          obs.complete();
-        }), c1000);
-        const c2000 = new Rx.Subject<number>();
-        c2000.subscribe(one);
-        q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
-          // console.log('QEntry:2000');
-          obs.next(2000);
-          obs.complete();
-        }), c2000);
-        const c3000 = new Rx.Subject<number>();
-        c3000.subscribe(one);
-        q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
-          // console.log('QEntry:3000');
-          obs.next(3000);
-          obs.complete();
-        }), c3000);
-
-      });
+          const c1000 = new RxMe.Subject<number>(RxMe.Match.NUMBER);
+          c1000.subscribe(one);
+          q.push<number>(RxMe.Observable.create(RxMe.Match.NUMBER, (obs: RxMe.Observer<number>) => {
+            // console.log('QEntry:1000');
+            obs.next(RxMe.data(1000));
+            obs.complete();
+          }), c1000);
+          const c2000 = new RxMe.Subject<number>(RxMe.Match.NUMBER);
+          c2000.subscribe(one);
+          q.push<number>(RxMe.Observable.create(RxMe.Match.NUMBER, (obs: RxMe.Observer<number>) => {
+            // console.log('QEntry:2000');
+            obs.next(RxMe.data(2000));
+            obs.complete();
+          }), c2000);
+          const c3000 = new RxMe.Subject<number>(RxMe.Match.NUMBER);
+          c3000.subscribe(one);
+          q.push<number>(RxMe.Observable.create(RxMe.Match.NUMBER, (obs: RxMe.Observer<number>) => {
+            // console.log('QEntry:3000');
+            obs.next(RxMe.data(3000));
+            obs.complete();
+          }), c3000);
+          return done;
+        }).passTo();
     });
   });
 
@@ -194,74 +218,79 @@ describe('queue', () => {
     // this.timeout(10000);
     // simple
     return new Promise<void>((rs, rj) => {
-      queue.start<number>({ taskTimer: 50 }).subscribe(rsq => {
-        if (rsq instanceof queue.LogMsg) {
-          logger(rsq);
-          return;
-        }
-        const q = rsq;
+      simqle.start<number>({ taskTimer: 50 }).matchLogMsg((_: simqle.Subject<any>, rsq: RxMe.LogMsg): boolean => {
+        logger(rsq);
+        return false;
+      }).match((obs: simqle.Subject<any>, q: simqle.Queue<number>) => {
+        // console.log(`starting 1000`);
         let countDown = 0;
-        const countDownLedge = new Rx.Subject<number>();
-        q.addWorker(worker(0, 0, () => countDownLedge.next(++countDown)));
-        qLoop(q, 1000, countDownLedge).then(rs).catch(rj);
-      });
+        const countDownLedge = new RxMe.Subject<number>(RxMe.Match.NUMBER);
+        q.addWorker(worker(0, 0, () => countDownLedge.next(RxMe.data(++countDown))));
+        qLoop(q, 1000, countDownLedge).then(() => {
+          obs.done(true);
+          rs();
+        }).catch(() => {
+          obs.done(true);
+          rj();
+        });
+        return obs;
+      }).passTo();
     });
   });
 
   it('simple two worker', async () => {
     return new Promise((rs, rj) => {
       const workers = [0, 0];
-      queue.start<number>({ taskTimer: 50 }).subscribe(rsq => {
-        if (rsq instanceof queue.LogMsg) {
+      simqle.start<number>({ taskTimer: 50 })
+        .matchLogMsg((_: simqle.Subject<any>, rsq: RxMe.LogMsg) => {
           logger(rsq);
-          return;
-        }
-        const q = rsq;
-        let countDown = 0;
-        const countDownLedge = new Rx.Subject<number>();
-        q.addWorker(worker(10, 2, () => { workers[0]++; countDownLedge.next(++countDown); }));
-        q.addWorker(worker(15, 2, () => { workers[1]++; countDownLedge.next(++countDown); }));
-        const oneState = { next: 0, error: 0, complete: 0 };
-        const one = counter(oneState);
-        countDownLedge.subscribe((a) => {
-          try {
-            // console.log('Wait:', a);
-            if (a == 3) {
-              assert.equal(workers[0], 2, `fast worker count ${workers}`);
-              assert.equal(workers[1], 1, 'slow worker count');
-              assert.equal(oneState.next, 6006);
-              assert.equal(oneState.error, 0);
-              assert.equal(oneState.complete, 3);
-              q.stop().subscribe(() => { rs(); });
+          return false;
+        }).match((done: simqle.Subject<any>, q: simqle.Queue<number>) => {
+          let countDown = 0;
+          const countDownLedge = new RxMe.Subject<number>(RxMe.Match.NUMBER);
+          q.addWorker(worker(10, 2, () => { workers[0]++; countDownLedge.next(RxMe.data(++countDown)); }));
+          q.addWorker(worker(15, 2, () => { workers[1]++; countDownLedge.next(RxMe.data(++countDown)); }));
+          const oneState = { next: 0, error: 0, complete: 0 };
+          const one = counter(oneState);
+          countDownLedge.subscribe((a) => {
+            try {
+              // console.log('Wait:', a);
+              if (a.asKind<number>() == 3) {
+                assert.equal(workers[0], 2, `fast worker count ${workers}`);
+                assert.equal(workers[1], 1, 'slow worker count');
+                assert.equal(oneState.next, 6006);
+                assert.equal(oneState.error, 0);
+                assert.equal(oneState.complete, 3);
+                q.stop().matchDone(() => { rs(); return false; }).passTo();
+              }
+            } catch (e) {
+              q.stop().matchDone(() => { rj(); return false; }).passTo();
             }
-          } catch (e) {
-            q.stop().subscribe(() => { rj(); });
-          }
-        });
+          });
 
-        const c1000 = new Rx.Subject<number>();
-        c1000.subscribe(one);
-        q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
-          // console.log('QEntry:1000');
-          obs.next(1000);
-          obs.complete();
-        }), c1000);
-        const c2000 = new Rx.Subject<number>();
-        c2000.subscribe(one);
-        q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
-          // console.log('QEntry:2000');
-          obs.next(2000);
-          obs.complete();
-        }), c2000);
-        const c3000 = new Rx.Subject<number>();
-        c3000.subscribe(one);
-        q.push<number>(Rx.Observable.create((obs: Rx.Observer<number>) => {
-          // console.log('QEntry:3000');
-          obs.next(3000);
-          obs.complete();
-        }), c3000);
-
-      });
+          const c1000 = new RxMe.Subject<number>(RxMe.Match.NUMBER);
+          c1000.subscribe(one);
+          q.push<number>(RxMe.Observable.create(RxMe.Match.NUMBER, (obs: RxMe.Observer<number>) => {
+            // console.log('QEntry:1000');
+            obs.next(RxMe.data(1000));
+            obs.complete();
+          }), c1000);
+          const c2000 = new RxMe.Subject<number>(RxMe.Match.NUMBER);
+          c2000.subscribe(one);
+          q.push<number>(RxMe.Observable.create(RxMe.Match.NUMBER, (obs: RxMe.Observer<number>) => {
+            // console.log('QEntry:2000');
+            obs.next(RxMe.data(2000));
+            obs.complete();
+          }), c2000);
+          const c3000 = new RxMe.Subject<number>(RxMe.Match.NUMBER);
+          c3000.subscribe(one);
+          q.push<number>(RxMe.Observable.create(RxMe.Match.NUMBER, (obs: RxMe.Observer<number>) => {
+            // console.log('QEntry:3000');
+            obs.next(RxMe.data(3000));
+            obs.complete();
+          }), c3000);
+          return done;
+        }).passTo();
     });
   });
 
@@ -269,21 +298,29 @@ describe('queue', () => {
     // this.timeout(10000);
     // simple
     return new Promise<void>((rs, rj) => {
-      queue.start<number>({ taskTimer: 50 }).subscribe(rsq => {
-        if (rsq instanceof queue.LogMsg) {
+      simqle.start<number>({ taskTimer: 50 })
+        .matchLogMsg((_: simqle.Subject<any>, rsq: RxMe.LogMsg) => {
           logger(rsq);
-          return;
-        }
-        const q = rsq;
-        let countDown = 0;
-        const countDownLedge = new Rx.Subject<number>();
-        q.addWorker(worker(0, 0, () => countDownLedge.next(++countDown)));
-        q.addWorker(worker(0, 0, () => countDownLedge.next(++countDown)));
-        q.addWorker(worker(0, 0, () => countDownLedge.next(++countDown)));
-        qLoop(q, 1000, countDownLedge).then(rs).catch(rj);
-      });
+          return false;
+        }).match((obs: simqle.Subject<any>, q: simqle.Queue<number>) => {
+          let countDown = 0;
+          const countDownLedge = new RxMe.Subject<number>(RxMe.Match.NUMBER);
+          q.addWorker(worker(0, 0, () => countDownLedge.next(RxMe.data(++countDown))));
+          q.addWorker(worker(0, 0, () => countDownLedge.next(RxMe.data(++countDown))));
+          q.addWorker(worker(0, 0, () => countDownLedge.next(RxMe.data(++countDown))));
+          qLoop(q, 1000, countDownLedge).then(() => {
+            obs.done(true);
+            rs();
+          }).catch(() => {
+            obs.done(true);
+            rj();
+          });
+          return obs;
+        }).passTo();
     });
   });
+
+});
 
   /*
     let calls = 10;
@@ -445,4 +482,3 @@ describe('queue', () => {
     }, 800);
   });
   */
-});

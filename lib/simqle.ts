@@ -1,4 +1,6 @@
-import * as Rx from 'rxjs';
+import * as rx from 'rxjs';
+// import * as RxMe from 'rxme';
+import * as RxMe from 'rxme';
 
 export const State = {
   OK: 'OK',
@@ -26,10 +28,10 @@ export class QEntryRun {
 export class QEntry<T> {
   public created: Date;
   public runs: QEntryRun[];
-  public input: Rx.Observable<T>;
-  public output: Rx.Subject<T>;
+  public input: RxMe.Observable<T>;
+  public output: RxMe.Subject<T>;
 
-  constructor(input: Rx.Observable<T>, output: Rx.Subject<T>) {
+  constructor(input: RxMe.Observable<T>, output: RxMe.Subject<T>) {
     this.runs = [];
     this.input = input;
     this.output = output;
@@ -59,22 +61,13 @@ export interface QConfig {
   maxExecuteCnt?: number;
 }
 
-export class LogMsg {
-  public readonly level: string;
-  public readonly parts: any[];
-  constructor(level: string, parts: any[]) {
-    this.level = level;
-    this.parts = parts;
-  }
-}
-
 export interface QWorker<T> {
-  (input: Rx.Observable<T>, output: Rx.Subject<T>): void;
+  (input: RxMe.Observable<T>, output: RxMe.Subject<T>): void;
 }
 
 export class WorkerState<T> {
   private running: QEntryRun;
-  private output: Rx.Subject<T>;
+  private output: RxMe.Subject<T>;
   private readonly qWorker: QWorker<T>;
   private readonly q: Queue<T>;
 
@@ -89,7 +82,7 @@ export class WorkerState<T> {
 
   public run(qe: QEntry<any>): void {
     this.running = qe.newQEntryRun();
-    this.output = new Rx.Subject();
+    this.output = new RxMe.Subject<T>(null);
     this.output.subscribe(
       (a) => {
         // console.log('WorkerState:next', a);
@@ -113,25 +106,34 @@ export class WorkerState<T> {
   }
 }
 
-export type QueueSubject<T> = Rx.Subject<Queue<T>|LogMsg>;
-export type QueueObserver<T> = Rx.Observer<Queue<T>|LogMsg>;
-export type QueueObservable<T> = Rx.Observable<Queue<T>|LogMsg>;
+// export class QueueSubject<T> extends RxMe.Subject<Queue<T>> { }
+export class Subject<T> extends RxMe.Subject<Queue<T>> {
+  constructor(a: any) {
+    super(a);
+  }
+}
+
+// export interface QueueObserver<T> extends RxMe.Observer<Queue<T>> { }
+export interface Observer<T> extends RxMe.Observer<Queue<T>> { }
+
+// export class QueueObservable<T> extends RxMe.Observable<Queue<T>> { }
+export class Observable<T> extends RxMe.Observable<Queue<T>> { }
 
 export class Logger<T> {
-  private readonly upStream: QueueSubject<T>;
+  private readonly upStream: Subject<T>;
   private readonly base: string[];
-  constructor(upStream: QueueSubject<T>, qid: number) {
+  constructor(upStream: Subject<T>, qid: number) {
     this.upStream = upStream;
     this.base = [`Q[${qid}]:`];
   }
   public info(...args: any[]): void {
-    this.upStream.next(new LogMsg('info', this.base.concat(args)));
+    this.upStream.next(RxMe.logMsg('info', args));
   }
   public error(...args: any[]): void {
-    this.upStream.next(new LogMsg('error', this.base.concat(args)));
+    this.upStream.next(RxMe.logMsg('error', this.base.concat(args)));
   }
   public debug(...args: any[]): void {
-    this.upStream.next(new LogMsg('debug', this.base.concat(args)));
+    this.upStream.next(RxMe.logMsg('debug', this.base.concat(args)));
   }
 }
 
@@ -146,15 +148,15 @@ export class Queue<T> {
   public retryWaitTime: number;
   public maxExecuteCnt: number;
   public readonly workers: WorkerState<T>[];
-  private readonly lengthSubject: Rx.Subject<number>;
+  private readonly lengthSubject: rx.Subject<number>;
   // private readonly obs: QueueObserver<T>;
   public readonly logger: Logger<T>;
 
-  constructor(obs: QueueSubject<T>, argv: QConfig, id: number) {
+  constructor(obs: Subject<T>, argv: QConfig, id: number) {
     // this.inProcess = false;
     // this.obs = obs;
     this.logger = new Logger(obs, id);
-    this.lengthSubject = new Rx.Subject();
+    this.lengthSubject = new rx.Subject<number>();
     this.taskTimer = argv.taskTimer || 500;
     this.reclaimTimeout = argv.reclaimTimeout || 10000;
     this.retryWaitTime = argv.retryWaitTime || 1000;
@@ -171,21 +173,21 @@ export class Queue<T> {
     return this;
   }
 
-  public length(): Rx.Subject<number> {
+  public length(): rx.Subject<number> {
     return this.lengthSubject;
   }
 
-  public stop(): Rx.Observable<void> {
+  public stop(): RxMe.Observable<void> {
     this.logger.info('run stop');
     // console.log('run stop');
-    return Rx.Observable.create((observer: Rx.Observer<void>) => {
+    return RxMe.Observable.create(null, (observer: RxMe.Observer<void>) => {
       this.logger.info('queue stop');
       let forceStopAfter = 3;
       const action = () => {
         if (forceStopAfter <= 0 || this.qEntries.length == 0) {
           clearInterval(this.qTask);
           this.logger.info('Q Task stopped');
-          observer.next(null);
+          observer.next(RxMe.done(true));
           observer.complete();
         } else {
           --forceStopAfter;
@@ -254,7 +256,7 @@ export class Queue<T> {
     // });
   }
 
-  public push<Y>(action: Rx.Observable<Y>, completed: Rx.Subject<Y>): void {
+  public push<Y>(action: RxMe.Observable<Y>, completed: RxMe.Subject<Y>): void {
     this.qEntries.push(new QEntry<Y>(action, completed));
     this.lengthSubject.next(this.qEntries.length);
     this.processMemoryQ();
@@ -263,10 +265,10 @@ export class Queue<T> {
 }
 
 let queueId = ~~(0x1000000 * Math.random());
-export function start<T>(argv: any): QueueObservable<T> {
-  return Rx.Observable.create((obs: QueueSubject<T>) => {
-    const q = new Queue<T>(obs, argv, queueId++);
-    q.logger.info('Queue Started');
+export function start<T>(argv: QConfig): Observable<T> {
+  return Observable.create(Queue, (obs: Subject<T>) => {
+    const q = RxMe.data(new Queue<T>(obs, argv, queueId++));
+    q.asKind<Queue<T>>().logger.info('Queue Started');
     obs.next(q);
   });
 }
