@@ -214,8 +214,7 @@ describe('queue', () => {
   });
 
   it('1000 one worker', async function (): Promise<void> {
-    // this.timeout(10000);
-    // simple
+    this.timeout(10000);
     return new Promise<void>((rs, rj) => {
       simqle.start<number>({ taskTimer: 50 }).matchLogMsg((_: simqle.Subject<any>, rsq: RxMe.LogMsg): boolean => {
         logger(rsq);
