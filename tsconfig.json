@@ -6,7 +6,8 @@
     "noImplicitAny": true,
     "pretty": true,
     "sourceMap": true,
-    "declaration": true
+    "declaration": true,
+    "types": [ "node", "mocha" ]
   },
   "exclude": [
     "node_modules",

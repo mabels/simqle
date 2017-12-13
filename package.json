@@ -4,6 +4,9 @@
   "description": "simqle queue",
   "main": "./dist/lib/simqle.js",
   "types": "./dist/lib/simqle.d.ts",
+  "engines": {
+    "node": ">=6.9.5"
+  },
   "scripts": {
     "clean": "rimraf dist",
     "prebuild": "npm run clean",
@@ -23,6 +26,7 @@
   },
   "homepage": "https://github.com/mabels/simqle#readme",
   "devDependencies": {
+    "@types/node": "^8.0.58",
     "@types/chai": "^4.0.10",
     "@types/mocha": "^2.2.44",
     "chai": ">=3.5.0",
