@@ -23,7 +23,7 @@
   },
   "homepage": "https://github.com/mabels/simqle#readme",
   "devDependencies": {
-    "@types/chai": "^4.0.8",
+    "@types/chai": "^4.0.10",
     "@types/mocha": "^2.2.44",
     "chai": ">=3.5.0",
     "cz-conventional-changelog": "^2.1.0",
@@ -34,7 +34,7 @@
   },
   "dependencies": {
     "rxjs": "^5.5.5",
-    "rxme": "^1.2.4"
+    "rxme": "^1.2.6"
   },
   "config": {
     "commitizen": {

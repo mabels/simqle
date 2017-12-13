@@ -70,12 +70,15 @@ export class WorkerState<T> {
   private output: RxMe.Subject<T>;
   private readonly qWorker: QWorker<T>;
   private readonly q: Queue<T>;
+  public readonly objectId: string;
 
   constructor(q: Queue<T>, qw: QWorker<T>) {
     this.q = q;
     this.qWorker = qw;
     this.running = null;
+    this.objectId = ('' + (1000000000 + ~~(Math.random() * 1000000000))).slice(1);
   }
+
   public isFree(): boolean {
     return !this.running;
   }
@@ -127,13 +130,13 @@ export class Logger<T> {
     this.base = [`Q[${qid}]:`];
   }
   public info(...args: any[]): void {
-    this.upStream.next(RxMe.logMsg('info', args));
+    this.upStream.nextLog.info(this.base.concat(args));
   }
   public error(...args: any[]): void {
-    this.upStream.next(RxMe.logMsg('error', this.base.concat(args)));
+    this.upStream.nextLog.error(this.base.concat(args));
   }
   public debug(...args: any[]): void {
-    this.upStream.next(RxMe.logMsg('debug', this.base.concat(args)));
+    this.upStream.nextLog.debug(this.base.concat(args));
   }
 }
 
@@ -169,7 +172,9 @@ export class Queue<T> {
   }
 
   public addWorker(qw: QWorker<T>): Queue<T> {
-    this.workers.push(new WorkerState(this, qw));
+    const ws = new WorkerState(this, qw);
+    this.workers.push(ws);
+    this.logger.info(`added Worker:[${ws.objectId}]`);
     return this;
   }
 

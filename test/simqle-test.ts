@@ -16,9 +16,19 @@ import * as simqle from '../lib/simqle';
 //   ]
 // });
 
-function logger(l: RxMe.LogMsg): void {
-  const awin = console as any;
-  awin[l.level].apply(awin[l.level], l.parts);
+class Logger {
+  public readonly rlm: RxMe.LogMsg[];
+
+  constructor() {
+    this.rlm = [];
+  }
+
+  public add(l: RxMe.LogMsg): void {
+    const awin = console as any;
+    awin[l.level].apply(awin[l.level], l.parts);
+    this.rlm.push(l);
+  }
+
 }
 
 function counter(oneState: any): RxMe.Observer<number> {
@@ -111,11 +121,12 @@ describe('queue', () => {
   it('simple no worker', async (): Promise<void> => {
     // simple
     return new Promise<void>((rs, rj) => {
+      const logger = new Logger();
       // console.log('--1');
       simqle.start<number>({ taskTimer: 50 })
         .matchLogMsg((_: simqle.Subject<any>, log: RxMe.LogMsg) => {
           // console.log('LogMsg:', log);
-          logger(log);
+          logger.add(log);
           return false;
         }).match((_: simqle.Subject<any>, q: simqle.Queue<number>) => {
           // console.log('Match:', q);
@@ -128,6 +139,7 @@ describe('queue', () => {
                 assert.equal(oneState.next, 0);
                 assert.equal(oneState.error, 0);
                 assert.equal(oneState.complete, 0);
+                assert.equal(logger.rlm.length, 1, `Logger:${JSON.stringify(logger.rlm)}`);
                 q.stop().matchDone(() => { rs(); return false; }).passTo();
               }
             } catch (e) {
@@ -161,9 +173,10 @@ describe('queue', () => {
   it('simple one worker', async () => {
     // simple
     return new Promise((rs, rj) => {
+      const logger = new Logger();
       simqle.start<number>({ taskTimer: 50 })
         .matchLogMsg((_: any, rlm: RxMe.LogMsg) => {
-          logger(rlm);
+          logger.add(rlm);
           return true;
         }).match((done: simqle.Subject<any>, q: simqle.Queue<number>) => {
           // console.log(q);
@@ -180,6 +193,7 @@ describe('queue', () => {
                 assert.equal(oneState.next, 6006);
                 assert.equal(oneState.error, 0);
                 assert.equal(oneState.complete, 3);
+                assert.equal(logger.rlm.length, 1 + 1, `Logger:${JSON.stringify(logger.rlm)}`);
                 q.stop().matchDone(() => { rs(); return false; }).passTo();
               }
             } catch (e) {
@@ -216,8 +230,9 @@ describe('queue', () => {
   it('1000 one worker', async function (): Promise<void> {
     this.timeout(10000);
     return new Promise<void>((rs, rj) => {
+      const logger = new Logger();
       simqle.start<number>({ taskTimer: 50 }).matchLogMsg((_: simqle.Subject<any>, rsq: RxMe.LogMsg): boolean => {
-        logger(rsq);
+        logger.add(rsq);
         return false;
       }).match((obs: simqle.Subject<any>, q: simqle.Queue<number>) => {
         // console.log(`starting 1000`);
@@ -225,11 +240,17 @@ describe('queue', () => {
         const countDownLedge = new RxMe.Subject<number>(RxMe.Match.NUMBER);
         q.addWorker(worker(0, 0, () => countDownLedge.next(RxMe.data(++countDown))));
         qLoop(q, 1000, countDownLedge).then(() => {
+          try {
+            assert.equal(logger.rlm.length, 4 + 1, `Logger:${JSON.stringify(logger.rlm)}`);
+          } catch (e) {
+            rj(e);
+            return;
+          }
           obs.done(true);
           rs();
-        }).catch(() => {
+        }).catch((e) => {
           obs.done(true);
-          rj();
+          rj(e);
         });
         return obs;
       }).passTo();
@@ -239,9 +260,10 @@ describe('queue', () => {
   it('simple two worker', async () => {
     return new Promise((rs, rj) => {
       const workers = [0, 0];
+      const logger = new Logger();
       simqle.start<number>({ taskTimer: 50 })
         .matchLogMsg((_: simqle.Subject<any>, rsq: RxMe.LogMsg) => {
-          logger(rsq);
+          logger.add(rsq);
           return false;
         }).match((done: simqle.Subject<any>, q: simqle.Queue<number>) => {
           let countDown = 0;
@@ -259,10 +281,11 @@ describe('queue', () => {
                 assert.equal(oneState.next, 6006);
                 assert.equal(oneState.error, 0);
                 assert.equal(oneState.complete, 3);
+                assert.equal(logger.rlm.length, 1 + 2, `Logger:${JSON.stringify(logger.rlm)}`);
                 q.stop().matchDone(() => { rs(); return false; }).passTo();
               }
             } catch (e) {
-              q.stop().matchDone(() => { rj(); return false; }).passTo();
+              q.stop().matchDone(() => { rj(e); return false; }).passTo();
             }
           });
 
@@ -296,9 +319,10 @@ describe('queue', () => {
     // this.timeout(10000);
     // simple
     return new Promise<void>((rs, rj) => {
+      const logger = new Logger();
       simqle.start<number>({ taskTimer: 50 })
         .matchLogMsg((_: simqle.Subject<any>, rsq: RxMe.LogMsg) => {
-          logger(rsq);
+          logger.add(rsq);
           return false;
         }).match((obs: simqle.Subject<any>, q: simqle.Queue<number>) => {
           let countDown = 0;
@@ -307,11 +331,17 @@ describe('queue', () => {
           q.addWorker(worker(0, 0, () => countDownLedge.next(RxMe.data(++countDown))));
           q.addWorker(worker(0, 0, () => countDownLedge.next(RxMe.data(++countDown))));
           qLoop(q, 1000, countDownLedge).then(() => {
+            try {
+              assert.equal(logger.rlm.length, 4 + 3, `Logger:${JSON.stringify(logger.rlm)}`);
+            } catch (e) {
+              rj(e);
+              return;
+            }
             obs.done(true);
             rs();
-          }).catch(() => {
+          }).catch((e) => {
             obs.done(true);
-            rj();
+            rj(e);
           });
           return obs;
         }).passTo();
