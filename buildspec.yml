@@ -1,0 +1,17 @@
+version: 0.1
+
+phases:
+  install:
+    commands:
+      - npm install 
+  build:
+    commands:
+      - npm test 
+  post_build:
+    commands:
+      - npm pack  
+
+artifacts:
+  files:
+    - simqle-3.1.0.tgz
+  discard-paths: yes
