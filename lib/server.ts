@@ -1,6 +1,6 @@
 import * as http from 'http';
 
-http.createServer(function (request, response) {
+http.createServer((request, response) => {
    // Send the HTTP header
    // HTTP Status: 200 : OK
    // Content Type: text/plain
