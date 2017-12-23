@@ -1,6 +1,7 @@
 import * as rx from 'rxjs';
 // import * as RxMe from 'rxme';
 import * as RxMe from 'rxme';
+// import { LogInfo, MatcherCallback, MatchReturn, Matcher } from 'rxme';
 
 export const State = {
   OK: 'OK',
@@ -25,13 +26,13 @@ export class QEntryRun {
   }
 }
 
-export class QEntry<T> {
+export class QEntry {
   public created: Date;
   public runs: QEntryRun[];
-  public input: RxMe.Observable<T>;
-  public output: RxMe.Subject<T>;
+  public input: RxMe.Observable;
+  public output: RxMe.Subject;
 
-  constructor(input: RxMe.Observable<T>, output: RxMe.Subject<T>) {
+  constructor(input: RxMe.Observable, output: RxMe.Subject) {
     this.runs = [];
     this.input = input;
     this.output = output;
@@ -61,18 +62,18 @@ export interface QConfig {
   maxExecuteCnt?: number;
 }
 
-export interface QWorker<T> {
-  (input: RxMe.Observable<T>, output: RxMe.Subject<T>): void;
+export interface QWorker {
+  (input: RxMe.Observable, output: RxMe.Subject): void;
 }
 
-export class WorkerState<T> {
+export class WorkerState {
   private running: QEntryRun;
-  private output: RxMe.Subject<T>;
-  private readonly qWorker: QWorker<T>;
-  private readonly q: Queue<T>;
+  private output: RxMe.Subject;
+  private readonly qWorker: QWorker;
+  private readonly q: Queue;
   public readonly objectId: string;
 
-  constructor(q: Queue<T>, qw: QWorker<T>) {
+  constructor(q: Queue, qw: QWorker) {
     this.q = q;
     this.qWorker = qw;
     this.running = null;
@@ -83,9 +84,9 @@ export class WorkerState<T> {
     return !this.running;
   }
 
-  public run(qe: QEntry<any>): void {
+  public run(qe: QEntry): void {
     this.running = qe.newQEntryRun();
-    this.output = new RxMe.Subject<T>(null);
+    this.output = new RxMe.Subject();
     this.output.subscribe(
       (a) => {
         // console.log('WorkerState:next', a);
@@ -110,54 +111,57 @@ export class WorkerState<T> {
 }
 
 // export class QueueSubject<T> extends RxMe.Subject<Queue<T>> { }
-export class Subject<T> extends RxMe.Subject<Queue<T>> {
-  constructor(a: any) {
-    super(a);
-  }
+export class Subject extends RxMe.Subject {
 }
 
 // export interface QueueObserver<T> extends RxMe.Observer<Queue<T>> { }
-export interface Observer<T> extends RxMe.Observer<Queue<T>> { }
+export interface Observer extends RxMe.Observer { }
 
 // export class QueueObservable<T> extends RxMe.Observable<Queue<T>> { }
-export class Observable<T> extends RxMe.Observable<Queue<T>> { }
+export class Observable extends RxMe.Observable { }
 
-export class Logger<T> {
-  private readonly upStream: Subject<T>;
+export class Logger {
+  private readonly upStream: Subject;
   private readonly base: string[];
-  constructor(upStream: Subject<T>, qid: number) {
+  constructor(upStream: Subject, qid: number) {
     this.upStream = upStream;
     this.base = [`Q[${qid}]:`];
   }
   public info(...args: any[]): void {
-    this.upStream.nextLog.info(this.base.concat(args));
+    this.upStream.next(RxMe.LogInfo(...this.base.concat(args)));
   }
   public error(...args: any[]): void {
-    this.upStream.nextLog.error(this.base.concat(args));
+    this.upStream.next(RxMe.LogError(...this.base.concat(args)));
   }
   public debug(...args: any[]): void {
-    this.upStream.nextLog.debug(this.base.concat(args));
+    this.upStream.next(RxMe.LogDebug(...this.base.concat(args)));
   }
 }
 
-export class Queue<T> {
+export interface QStat {
+  processMemoryQ: number;
+}
+
+export class Queue {
   // public q: Rx.Subject<QEntry<T>>;
   // public readonly deadLetter: Rx.Subject<QEntry<T>>;
-  public qEntries: QEntry<any>[] = [];
+  public qEntries: QEntry[] = [];
   // public inProcess: boolean;
-  public qTask: number;
+  public qTask: any; // node windows
   public reclaimTimeout: number;
   public taskTimer: number;
   public retryWaitTime: number;
   public maxExecuteCnt: number;
-  public readonly workers: WorkerState<T>[];
+  public readonly workers: WorkerState[];
   private readonly lengthSubject: rx.Subject<number>;
   // private readonly obs: QueueObserver<T>;
-  public readonly logger: Logger<T>;
+  public readonly logger: Logger;
+  public readonly stat: QStat;
 
-  constructor(obs: Subject<T>, argv: QConfig, id: number) {
+  constructor(obs: Subject, argv: QConfig, id: number) {
     // this.inProcess = false;
     // this.obs = obs;
+    this.stat = { processMemoryQ: 0 };
     this.logger = new Logger(obs, id);
     this.lengthSubject = new rx.Subject<number>();
     this.taskTimer = argv.taskTimer || 500;
@@ -168,10 +172,11 @@ export class Queue<T> {
     // this.q = new Rx.Subject<QEntry<T>>();
     // this.q.subscribe(this.action.bind(this));
     // this.deadLetter = new Rx.Subject<QEntry<T>>();
-    this.qTask = setInterval(this.processMemoryQ.bind(this), this.taskTimer);
+    this.qTask = setInterval(() => this.processMemoryQ(true), this.taskTimer);
+    this.logger.info(`Queue Started`);
   }
 
-  public addWorker(qw: QWorker<T>): Queue<T> {
+  public addWorker(qw: QWorker): Queue {
     const ws = new WorkerState(this, qw);
     this.workers.push(ws);
     this.logger.info(`added Worker:[${ws.objectId}]`);
@@ -182,17 +187,17 @@ export class Queue<T> {
     return this.lengthSubject;
   }
 
-  public stop(): RxMe.Observable<void> {
+  public stop(): RxMe.Observable {
     this.logger.info('run stop');
     // console.log('run stop');
-    return RxMe.Observable.create(null, (observer: RxMe.Observer<void>) => {
+    return RxMe.Observable.create(observer => {
       this.logger.info('queue stop');
       let forceStopAfter = 3;
       const action = () => {
         if (forceStopAfter <= 0 || this.qEntries.length == 0) {
           clearInterval(this.qTask);
           this.logger.info('Q Task stopped');
-          observer.next(RxMe.done(true));
+          // observer.next(RxMe.Msg.Boolean(true));
           observer.complete();
         } else {
           --forceStopAfter;
@@ -221,7 +226,7 @@ export class Queue<T> {
   //   // });
   // }
 
-  public processMemoryQ(): void {
+  public processMemoryQ(log = false): void {
     const freeWorker = this.workers.find(w => w.isFree());
     const qentry = this.qEntries.find(q => q.isWaiting());
     if (freeWorker && qentry) {
@@ -232,6 +237,10 @@ export class Queue<T> {
     this.qEntries = this.qEntries.filter(a => !a.isCompleted());
     if (prevLen != this.qEntries.length) {
       this.lengthSubject.next(this.qEntries.length);
+    }
+    this.stat.processMemoryQ++;
+    if (log) {
+      this.logger.info(`Q:${this.stat.processMemoryQ}:${this.qEntries.length}`);
     }
     // this.qEntries = this.qEntries.filter((qe) => {
     //   if (qe.completed) {
@@ -261,19 +270,22 @@ export class Queue<T> {
     // });
   }
 
-  public push<Y>(action: RxMe.Observable<Y>, completed: RxMe.Subject<Y>): void {
-    this.qEntries.push(new QEntry<Y>(action, completed));
+  public push(action: RxMe.Observable, completed: RxMe.Subject): void {
+    this.qEntries.push(new QEntry(action, completed));
     this.lengthSubject.next(this.qEntries.length);
     this.processMemoryQ();
   }
 
 }
 
+export function MatchQ(cb: (t: Queue, sub?: Subject) => RxMe.MatchReturn): RxMe.MatcherCallback {
+  return RxMe.Matcher.Type(Queue, cb);
+}
+
 let queueId = ~~(0x1000000 * Math.random());
-export function start<T>(argv: QConfig): Observable<T> {
-  return Observable.create(Queue, (obs: Subject<T>) => {
-    const q = RxMe.data(new Queue<T>(obs, argv, queueId++));
-    q.asKind<Queue<T>>().logger.info('Queue Started');
+export function start(argv: QConfig): Observable {
+  return Observable.create((obs: Subject) => {
+    const q = RxMe.Msg.Type(new Queue(obs, argv, queueId++));
     obs.next(q);
   });
 }
