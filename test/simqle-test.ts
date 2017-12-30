@@ -66,25 +66,11 @@ function worker(ms: number, ofs: number, cb: () => void): simqle.QWorker {
         // console.log('worker:done:Timeout:', ofs, nrs);
         nrs.forEach(nr => output.next(RxMe.Msg.Number(nr + ofs)));
         output.complete();
-        cpl.pass(false);
+        cpl.stopPass(false);
         cb();
       }, ms);
-      // output.next(RxMe.data(done));
-      // output.data(done);
-      // cb();
       return cpl;
     })).passTo(output);
-    /*
-      -    }, (err: any) => {
-      -      output.error(err);
-      -    }, () => {
-      -      setTimeout(() => {
-      -        nrs.forEach(nr => output.next(nr + ofs));
-      -        output.complete();
-      -        cb();
-      -      }, ms);
-    */
-
   };
 }
 
@@ -251,10 +237,10 @@ describe('queue', () => {
             rj(e);
             return;
           }
-          done.pass(true);
+          done.stopPass(true);
           rs();
         }).catch((e) => {
-          done.pass(true);
+          done.stopPass(true);
           rj(e);
         });
         return done;
