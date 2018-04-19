@@ -27,7 +27,7 @@
   "homepage": "https://github.com/mabels/simqle#readme",
   "devDependencies": {
     "@types/chai": "^4.0.10",
-    "@types/mocha": "^2.2.45",
+    "@types/mocha": "^5.1.0",
     "@types/node": "^8.5.2",
     "chai": ">=3.5.0",
     "cz-conventional-changelog": "^2.1.0",
