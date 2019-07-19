@@ -30,7 +30,7 @@
     "@types/mocha": "^2.2.48",
     "@types/node": "^8.10.20",
     "chai": ">=3.5.0",
-    "cz-conventional-changelog": "^2.1.0",
+    "cz-conventional-changelog": "^3.0.1",
     "mocha": "^4.1.0",
     "rimraf": "^2.6.2",
     "tslint": "^5.10.0",
